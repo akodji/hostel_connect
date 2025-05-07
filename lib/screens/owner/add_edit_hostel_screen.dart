@@ -28,22 +28,17 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
   // Form controllers
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _locationController = TextEditingController(); // For worded location description
+  final _locationController = TextEditingController();
   final _priceController = TextEditingController();
   final _availableRoomsController = TextEditingController(text: '1');
   final _addressController = TextEditingController();
-  
-  // Separate contact controllers
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   
   String _campusLocation = 'Off Campus';
-  
-  // Rules list
   List<String> _rules = ['No smoking inside the building', 'Quiet hours: 10 PM - 7 AM'];
   final _newRuleController = TextEditingController();
   
-  // Amenities
   Map<String, bool> _amenities = {
     'WiFi': false,
     'Study Room': false,
@@ -63,7 +58,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
   
   Future<void> _loadHostelData() async {
     if (widget.hostelData != null) {
-      // Fill form with existing data if editing
       _nameController.text = widget.hostelData!['name'] ?? '';
       _descriptionController.text = widget.hostelData!['description'] ?? '';
       _addressController.text = widget.hostelData!['address'] ?? '';
@@ -71,12 +65,9 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
       _campusLocation = widget.hostelData!['campus_location'] ?? 'Off Campus';
       _priceController.text = (widget.hostelData!['price'] ?? '').toString();
       _availableRoomsController.text = (widget.hostelData!['available_rooms'] ?? 1).toString();
-      
-      // Load phone and email
       _phoneController.text = widget.hostelData!['phone'] ?? '';
       _emailController.text = widget.hostelData!['email'] ?? '';
     
-      // Load amenities if available
       try {
         final hostelId = widget.hostelData!['id'];
         final amenitiesResponse = await supabase
@@ -95,7 +86,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
           }
         }
         
-        // Load hostel rules
         final rulesResponse = await supabase
             .from('hostel_rules')
             .select('rule')
@@ -105,7 +95,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
           setState(() {
             _rules = rulesResponse.map<String>((item) => item['rule'].toString()).toList();
             if (_rules.isEmpty) {
-              // Add default rules if none exist
               _rules = ['No smoking inside the building', 'Quiet hours: 10 PM - 7 AM'];
             }
           });
@@ -146,7 +135,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
     super.dispose();
   }
 
-  // Function to launch phone call
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(
       scheme: 'tel',
@@ -159,7 +147,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
     }
   }
 
-  // Function to launch email
   Future<void> _sendEmail(String email) async {
     final Uri launchUri = Uri(
       scheme: 'mailto',
@@ -173,375 +160,374 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
   }
 
   Future<void> _pickImage() async {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Select Image Source',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF324054),
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (BuildContext context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Image Source',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF324054),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Camera option
+                  GestureDetector(
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      
+                      // Try to access camera directly first
+                      try {
+                        final pickedFile = await _imagePicker.pickImage(
+                          source: ImageSource.camera,
+                          imageQuality: 80,
+                        );
+                        
+                        if (pickedFile != null && mounted) {
+                          setState(() {
+                            _selectedImage = File(pickedFile.path);
+                          });
+                        }
+                      } catch (e) {
+                        // If that fails, try with explicit permission request
+                        if (mounted) {
+                          final status = await Permission.camera.request();
+                          
+                          if (status.isGranted) {
+                            try {
+                              final pickedFile = await _imagePicker.pickImage(
+                                source: ImageSource.camera,
+                                imageQuality: 80,
+                              );
+                              
+                              if (pickedFile != null && mounted) {
+                                setState(() {
+                                  _selectedImage = File(pickedFile.path);
+                                });
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Camera error: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          } else if (status.isPermanentlyDenied) {
+                            if (mounted) {
+                              showDialog(
+                                context: context,
+                                builder: (BuildContext context) => AlertDialog(
+                                  title: const Text('Camera Permission'),
+                                  content: const Text(
+                                    'Camera permission is required to take pictures. Please enable it in app settings.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      child: const Text('Cancel'),
+                                      onPressed: () => Navigator.of(context).pop(),
+                                    ),
+                                    TextButton(
+                                      child: const Text('Open Settings'),
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        openAppSettings();
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                          } else if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Camera permission denied'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Color(0xFF4A6FE3),
+                          child: Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'Camera',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // Camera option
-                    GestureDetector(
-                      onTap: () async {
-                        Navigator.of(context).pop();
+                  
+                  // Gallery option
+                  GestureDetector(
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      
+                      // Try to access gallery directly first
+                      try {
+                        final pickedFile = await _imagePicker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 80,
+                        );
                         
-                        // Request camera permission
-                        final status = await Permission.camera.request();
-                        
-                        if (status.isGranted) {
+                        if (pickedFile != null && mounted) {
+                          setState(() {
+                            _selectedImage = File(pickedFile.path);
+                          });
+                        }
+                      } catch (e) {
+                        // If that fails, try with explicit permission request
+                        if (mounted) {
+                          PermissionStatus status;
                           try {
-                            final pickedFile = await _imagePicker.pickImage(
-                              source: ImageSource.camera,
-                              imageQuality: 80,
-                            );
-                            
-                            if (pickedFile != null) {
-                              setState(() {
-                                _selectedImage = File(pickedFile.path);
-                              });
-                            }
+                            status = await Permission.photos.request();
                           } catch (e) {
+                            status = await Permission.storage.request();
+                          }
+                          
+                          if (status.isGranted) {
+                            try {
+                              final pickedFile = await _imagePicker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 80,
+                              );
+                              
+                              if (pickedFile != null && mounted) {
+                                setState(() {
+                                  _selectedImage = File(pickedFile.path);
+                                });
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Gallery error: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          } else if (status.isPermanentlyDenied && mounted) {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) => AlertDialog(
+                                title: const Text('Gallery Permission'),
+                                content: const Text(
+                                  'Photo access permission is required to select images. Please enable it in app settings.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    child: const Text('Cancel'),
+                                    onPressed: () => Navigator.of(context).pop(),
+                                  ),
+                                  TextButton(
+                                    child: const Text('Open Settings'),
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                      openAppSettings();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Camera error: ${e.toString()}'),
+                              const SnackBar(
+                                content: Text('Gallery permission denied'),
                                 backgroundColor: Colors.red,
                               ),
                             );
                           }
-                        } else if (status.isPermanentlyDenied) {
-                          // Show dialog to guide user to app settings
-                          showDialog(
-                            context: context,
-                            builder: (BuildContext context) => AlertDialog(
-                              title: const Text('Camera Permission'),
-                              content: const Text(
-                                'Camera permission is required to take pictures. Please enable it in app settings.',
-                              ),
-                              actions: [
-                                TextButton(
-                                  child: const Text('Cancel'),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                ),
-                                TextButton(
-                                  child: const Text('Open Settings'),
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                    openAppSettings();
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Camera permission denied'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
                         }
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircleAvatar(
-                            radius: 30,
-                            backgroundColor: Color(0xFF4A6FE3),
-                            child: Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 30,
-                            ),
+                      }
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Color(0xFF4A6FE3),
+                          child: Icon(
+                            Icons.photo_library,
+                            color: Colors.white,
+                            size: 30,
                           ),
-                          SizedBox(height: 10),
-                          Text(
-                            'Camera',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'Gallery',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    
-                    // Gallery option
-                    GestureDetector(
-                      onTap: () async {
-                        Navigator.of(context).pop();
-                        
-                        // Request storage permission
-                        final status = await Permission.storage.request();
-                        
-                        if (status.isGranted) {
-                          try {
-                            final pickedFile = await _imagePicker.pickImage(
-                              source: ImageSource.gallery,
-                              imageQuality: 80,
-                            );
-                            
-                            if (pickedFile != null) {
-                              setState(() {
-                                _selectedImage = File(pickedFile.path);
-                              });
-                            }
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Gallery error: ${e.toString()}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        } else if (status.isPermanentlyDenied) {
-                          // Show dialog to guide user to app settings
-                          showDialog(
-                            context: context,
-                            builder: (BuildContext context) => AlertDialog(
-                              title: const Text('Gallery Permission'),
-                              content: const Text(
-                                'Storage permission is required to select images. Please enable it in app settings.',
-                              ),
-                              actions: [
-                                TextButton(
-                                  child: const Text('Cancel'),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                ),
-                                TextButton(
-                                  child: const Text('Open Settings'),
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                    openAppSettings();
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Gallery permission denied'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircleAvatar(
-                            radius: 30,
-                            backgroundColor: Color(0xFF4A6FE3),
-                            child: Icon(
-                              Icons.photo_library,
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'Gallery',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 
   Future<void> _saveHostel() async {
-  if (!_formKey.currentState!.validate()) {
-    return;
-  }
+    if (!_formKey.currentState!.validate()) return;
 
-  try {
-    setState(() {
-      _isLoading = true;
-    });
+    try {
+      setState(() => _isLoading = true);
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not logged in');
 
-    // Get current user ID - necessary for RLS policies
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      throw Exception('User not logged in');
-    }
+      String? imageUrl;
+      if (_selectedImage != null) {
+        final fileName = 'hostels/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await supabase.storage.from('images').upload(fileName, _selectedImage!);
+        imageUrl = supabase.storage.from('images').getPublicUrl(fileName);
+      }
 
-    // Upload image if selected
-    String? imageUrl;
-    if (_selectedImage != null) {
-      // Using the folder structure: images/hostels/[user_id]/[timestamp].jpg
-      final fileName = 'hostels/${userId}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final hostelData = {
+        'name': _nameController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'address': _addressController.text.trim(),
+        'location': _locationController.text.trim(),
+        'campus_location': _campusLocation,
+        'price': int.tryParse(_priceController.text) ?? 0,
+        'available_rooms': int.tryParse(_availableRoomsController.text) ?? 1,
+        'owner_id': userId,
+        'phone': _phoneController.text.trim(),
+        'email': _emailController.text.trim(),
+        'updated_at': DateTime.now().toIso8601String(),
+        if (imageUrl != null) 'image_url': imageUrl,
+      };
+
+      late int hostelId;
       
-      await supabase
-          .storage
-          .from('images')  // Use your existing "images" bucket
-          .upload(fileName, _selectedImage!);
-      
-      imageUrl = supabase
-          .storage
-          .from('images')
-          .getPublicUrl(fileName);
-    }
-
-    // Prepare complete hostel data
-    final hostelData = {
-      'name': _nameController.text.trim(),
-      'description': _descriptionController.text.trim(),
-      'address': _addressController.text.trim(),
-      'location': _locationController.text.trim(),
-      'campus_location': _campusLocation,
-      'price': int.tryParse(_priceController.text) ?? 0,
-      'available_rooms': int.tryParse(_availableRoomsController.text) ?? 1,
-      'owner_id': userId,
-      'phone': _phoneController.text.trim(),
-      'email': _emailController.text.trim(),
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-
-    // Add image_url only if it exists
-    if (imageUrl != null) {
-      hostelData['image_url'] = imageUrl;
-    }
-
-    // Save or update the hostel
-    late int hostelId;
-    
-    if (widget.hostelData != null) {
-      // Update existing hostel
-      final response = await supabase
-          .from('hostels')
-          .update(hostelData)
-          .eq('id', widget.hostelData!['id'])
-          .eq('owner_id', userId) // For RLS security - ensure owner is modifying
-          .select('id');
-          
-      if (response == null || response.isEmpty) {
-        throw Exception('Failed to update hostel or you do not have permission');
+      if (widget.hostelData != null) {
+        final response = await supabase
+            .from('hostels')
+            .update(hostelData)
+            .eq('id', widget.hostelData!['id'])
+            .eq('owner_id', userId)
+            .select('id');
+            
+        if (response == null || response.isEmpty) {
+          throw Exception('Failed to update hostel or you do not have permission');
+        }
+        hostelId = response[0]['id'];
+      } else {
+        final response = await supabase
+            .from('hostels')
+            .insert(hostelData)
+            .select('id');
+            
+        if (response == null || response.isEmpty) {
+          throw Exception('Failed to create hostel');
+        }
+        hostelId = response[0]['id'];
       }
       
-      hostelId = response[0]['id'];
-    } else {
-      // Create new hostel
-      final response = await supabase
-          .from('hostels')
-          .insert(hostelData)
-          .select('id');
-          
-      if (response == null || response.isEmpty) {
-        throw Exception('Failed to create hostel');
+      // Handle amenities
+      if (widget.hostelData != null) {
+        await supabase
+            .from('hostel_amenities')
+            .delete()
+            .eq('hostel_id', hostelId);
       }
       
-      hostelId = response[0]['id'];
-    }
-    
-    // Handle amenities
-    
-    // First delete existing amenities if updating
-    if (widget.hostelData != null) {
-      await supabase
-          .from('hostel_amenities')
-          .delete()
-          .eq('hostel_id', hostelId);
-    }
-    
-    // Insert selected amenities
-    final List<Map<String, dynamic>> amenitiesData = [];
-    _amenities.forEach((amenity, selected) {
-      if (selected) {
-        amenitiesData.add({
-          'hostel_id': hostelId,
-          'amenity': amenity,
-        });
-      }
-    });
-    
-    // Only insert if we have amenities
-    if (amenitiesData.isNotEmpty) {
-      await supabase
-          .from('hostel_amenities')
-          .insert(amenitiesData);
-    }
-    
-    // Handle rules
-    
-    // First delete existing rules if updating
-    if (widget.hostelData != null) {
-      await supabase
-          .from('hostel_rules')
-          .delete()
-          .eq('hostel_id', hostelId);
-    }
-    
-    // Insert hostel rules
-    final List<Map<String, dynamic>> rulesData = [];
-    for (var rule in _rules) {
-      if (rule.trim().isNotEmpty) {
-        rulesData.add({
-          'hostel_id': hostelId,
-          'rule': rule.trim(),
-        });
-      }
-    }
-    
-    // Only insert if we have rules
-    if (rulesData.isNotEmpty) {
-      await supabase
-          .from('hostel_rules')
-          .insert(rulesData);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Hostel saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.pop(context, true); // Pass true to indicate success
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving hostel: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
+      final amenitiesData = [];
+      _amenities.forEach((amenity, selected) {
+        if (selected) {
+          amenitiesData.add({
+            'hostel_id': hostelId,
+            'amenity': amenity,
+          });
+        }
       });
+      
+      if (amenitiesData.isNotEmpty) {
+        await supabase.from('hostel_amenities').insert(amenitiesData);
+      }
+      
+      // Handle rules
+      if (widget.hostelData != null) {
+        await supabase
+            .from('hostel_rules')
+            .delete()
+            .eq('hostel_id', hostelId);
+      }
+      
+      final rulesData = [];
+      for (var rule in _rules) {
+        if (rule.trim().isNotEmpty) {
+          rulesData.add({
+            'hostel_id': hostelId,
+            'rule': rule.trim(),
+          });
+        }
+      }
+      
+      if (rulesData.isNotEmpty) {
+        await supabase.from('hostel_rules').insert(rulesData);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hostel saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving hostel: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -653,7 +639,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // CONTACT INFORMATION SECTION
+                      // Contact Information
                       const SizedBox(height: 24),
                       const Text(
                         'Contact Information',
@@ -665,7 +651,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // Phone Number Field
+                      // Phone Number
                       const Text(
                         'Phone Number',
                         style: TextStyle(
@@ -705,7 +691,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // Email Field
+                      // Email
                       const Text(
                         'Email Address',
                         style: TextStyle(
@@ -740,7 +726,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Please enter an email address';
                           }
-                          // Simple email validation
                           if (!value.contains('@') || !value.contains('.')) {
                             return 'Please enter a valid email address';
                           }
@@ -748,7 +733,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                         },
                       ),
                       
-                      // Location field (worded location for map)
+                      // Location
                       const SizedBox(height: 16),
                       const Text(
                         'Location Description',
@@ -787,7 +772,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Address field
+                      // Address
                       const Text(
                         'Address',
                         style: TextStyle(
@@ -825,7 +810,7 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Campus Location Dropdown
+                      // Campus Location
                       const Text(
                         'Campus Location',
                         style: TextStyle(
@@ -1012,7 +997,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                         ),
                         child: Column(
                           children: [
-                            // List current rules with delete option
                             ListView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
@@ -1048,7 +1032,6 @@ class _AddEditHostelScreenState extends State<AddEditHostelScreen> {
                               },
                             ),
                             
-                            // Add new rule
                             const SizedBox(height: 8),
                             Row(
                               children: [

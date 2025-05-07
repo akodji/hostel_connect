@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'add_edit_hostel_screen.dart';
 import 'manage_hostels_screen.dart';
 import 'owner_bookings_screen.dart';
+import 'package:hostel_connect/screens/owner/reviews_page.dart';
 
 
 final supabase = Supabase.instance.client;
@@ -261,7 +262,21 @@ class _HostelOwnerDashboardScreenState extends State<HostelOwnerDashboardScreen>
                         },
                       ),
                       const SizedBox(height: 16),
-                      
+                      _buildActionCard(
+  'View Reviews',
+  'Check customer reviews for your hostels',
+  Icons.star_rate,
+  const Color(0xFF8884D8),
+  () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ReviewsPage(),
+      ),
+    ).then((_) => _loadDashboardData());
+  },
+),
+const SizedBox(height: 16),
                       
                     ],
                   ),

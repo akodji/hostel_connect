@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hostel_connect/screens/student/room_selection_screen.dart';
 import 'package:hostel_connect/widgets/hostel_card.dart';
 import 'package:hostel_connect/widgets/offline_notification_banner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,7 @@ import 'bookings_screen.dart';
 import 'package:hostel_connect/screens/owner/owner_bookings_screen.dart';
 import 'package:hostel_connect/screens/owner/analytics_screen.dart';
 import 'package:hostel_connect/screens/student/favourites_screen.dart';
+import 'package:hostel_connect/services/local_database_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -22,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   bool _isOffline = false;
   bool _isOwner = false;
+  
+  
   
   // Database-backed variables
   List<Map<String, dynamic>> _allHostels = []; // Store all hostels
@@ -507,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _buildQuickActionItem(
+                             _buildQuickActionItem(
                               context,
                               Icons.bed_outlined,
                               "Browse Hostels",
@@ -564,16 +568,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                   )
                                 : _buildQuickActionItem(
                                     context,
-                                    Icons.wifi_off_outlined,
-                                    "Offline Data",
+                                    Icons.meeting_room_outlined,
+                                    "Book Room",
                                     const Color(0xFFF75676),
                                     () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (context) =>
-                                                 OfflineBookingsScreen()),
-                                      );
+                                      if (_allHostels.isNotEmpty) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) =>
+                                                   RoomSelectionScreen(
+                                                     hostelId: _allHostels.first['id'],
+                                                   )),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('No hostels available for booking')),
+                                        );
+                                      }
                                     },
                                   ),
                           ],
@@ -822,91 +834,105 @@ class _HomeScreenState extends State<HomeScreen> {
     String price,
     String imagePath,
   ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Room Image
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Image.network(
-              imagePath,
-              height: 100,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 100,
-                  color: const Color(0xFFF1F3F6),
-                  child: Icon(
-                    Icons.hotel,
-                    size: 40,
-                    color: const Color(0xFF324054).withOpacity(0.5),
-                  ),
-                );
-              },
+    return GestureDetector(
+      onTap: () {
+        // Navigate to RoomSelectionScreen when a room type is tapped
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RoomSelectionScreen(
+              hostelId: _allHostels.isNotEmpty ? _allHostels.first['id'] : 0, // Default or first hostel
+              roomType: title,
             ),
           ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Room Image
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Image.network(
+                imagePath,
+                height: 100,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 100,
+                    color: const Color(0xFFF1F3F6),
+                    child: Icon(
+                      Icons.hotel,
+                      size: 40,
+                      color: const Color(0xFF324054).withOpacity(0.5),
+                    ),
+                  );
+                },
+              ),
+            ),
 
-          // Room Info
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF324054),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: const Color(0xFF324054).withOpacity(0.7),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "₵$price",
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF4A6FE3),
-                      ),
+            // Room Info
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF324054),
                     ),
-                    const Text(
-                      "per semester",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF324054),
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: const Color(0xFF324054).withOpacity(0.7),
                     ),
-                  ],
-                ),
-              ],
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "₵$price",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF4A6FE3),
+                        ),
+                      ),
+                      const Text(
+                        "per semester",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF324054),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

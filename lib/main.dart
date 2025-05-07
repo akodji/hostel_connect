@@ -5,9 +5,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:hostel_connect/screens/auth_wrapper.dart';
 import 'package:hostel_connect/screens/auth/onboarding_screen.dart';
 import 'package:hostel_connect/services/hive_models.dart';
+import 'package:hostel_connect/services/local_database_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+
 
   // ✅ Initialize Hive
   await Hive.initFlutter();

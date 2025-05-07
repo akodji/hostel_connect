@@ -4,20 +4,30 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'room_selection_screen.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:hostel_connect/services/hive_models.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:hostel_connect/services/connectivity_service.dart';
 
 final supabase = Supabase.instance.client;
 
 class HostelDetailScreen extends StatefulWidget {
   final int hostelId;
+  
 
   const HostelDetailScreen({
     Key? key,
     required this.hostelId,
   }) : super(key: key);
+  
 
   @override
   _HostelDetailScreenState createState() => _HostelDetailScreenState();
+
+  
 }
 
 class _HostelDetailScreenState extends State<HostelDetailScreen> with SingleTickerProviderStateMixin {
@@ -26,23 +36,66 @@ class _HostelDetailScreenState extends State<HostelDetailScreen> with SingleTick
   int _userRating = 0;
   final TextEditingController _reviewController = TextEditingController();
   bool _isLoading = true;
+  bool _isConnected = true;
+  StreamSubscription? _connectivitySubscription;
+  Box<HostelModel>? _hostelsBox;
+  Box<RoomModel>? _roomsBox;
+  Box<FavoriteModel>? _favoritesBox;
+  // If you have these other boxes, import them too
+  Box? _amenitiesBox;
+  Box? _rulesBox;
+  Box? _reviewsBox;
 
   // Data structure to hold all hostel information
   Map<String, dynamic> _hostelData = {};
 
   @override
   void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadHostelData();
-    _checkIfFavorite();
-  }
+  super.initState();
+  _tabController = TabController(length: 3, vsync: this);
+  _openHiveBoxes();
+  _checkConnectivity();
+  _setupConnectivityListener();
+  _loadHostelData();
+  _checkIfFavorite();
+}
+
+Future<void> _openHiveBoxes() async {
+  _hostelsBox = await Hive.openBox<HostelModel>('hostels');
+  _roomsBox = await Hive.openBox<RoomModel>('rooms');
+  _favoritesBox = await Hive.openBox<FavoriteModel>('favorites');
+  // Open other boxes if needed
+  // _amenitiesBox = await Hive.openBox('hostel_amenities'); 
+  // _rulesBox = await Hive.openBox('hostel_rules');
+  // _reviewsBox = await Hive.openBox('reviews');
+}
+
+Future<void> _checkConnectivity() async {
+  var connectivityResult = await Connectivity().checkConnectivity();
+  setState(() {
+    _isConnected = connectivityResult != ConnectivityResult.none;
+  });
+}
+
+void _setupConnectivityListener() {
+  _connectivitySubscription = Connectivity().onConnectivityChanged.listen((result) {
+    setState(() {
+      _isConnected = result != ConnectivityResult.none;
+      if (_isConnected) {
+        // Refresh data from API when connection is restored
+        _loadHostelData();
+      }
+    });
+  });
+}
 
   Future<void> _checkIfFavorite() async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+  try {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
 
+    if (_isConnected) {
+      // Online mode - check favorites from Supabase
       final response = await supabase
           .from('favorites')
           .select()
@@ -52,17 +105,45 @@ class _HostelDetailScreenState extends State<HostelDetailScreen> with SingleTick
       setState(() {
         _isFavorite = response.isNotEmpty;
       });
-    } catch (error) {
-      print('Error checking favorite status: $error');
+    } else {
+      // Offline mode - check favorites from Hive
+      final isFavorite = _favoritesBox?.values
+          .any((fav) => fav.hostelId == widget.hostelId && fav.userId == userId) ?? false;
+      
+      setState(() {
+        _isFavorite = isFavorite;
+      });
     }
+  } catch (error) {
+    print('Error checking favorite status: $error');
   }
-
-  // Fix for review query in _loadHostelData method
+}
 Future<void> _loadHostelData() async {
   setState(() {
     _isLoading = true;
   });
 
+  try {
+    if (_isConnected) {
+      // Online mode - fetch from Supabase
+      await _loadHostelDataFromSupabase();
+    } else {
+      // Offline mode - load from Hive
+      await _loadHostelDataFromHive();
+    }
+  } catch (error) {
+    print('Error loading hostel data: $error');
+    setState(() {
+      _isLoading = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error loading hostel data: $error')),
+    );
+  }
+}
+
+  // Fix for review query in _loadHostelData method
+Future<void> _loadHostelDataFromSupabase() async {
   try {
     // 1. Fetch the hostel details with email and phone
     final hostelResponse = await supabase
@@ -70,6 +151,26 @@ Future<void> _loadHostelData() async {
         .select('*, email, phone')
         .eq('id', widget.hostelId)
         .single();
+
+    // Save hostel to Hive for offline access
+    HostelModel hostelModel = HostelModel(
+      id: hostelResponse['id'],
+      name: hostelResponse['name'],
+      description: hostelResponse['description'],
+      address: hostelResponse['address'],
+      campusLocation: hostelResponse['campusLocation'] ?? '',
+      price: hostelResponse['price'],
+      availableRooms: hostelResponse['available_rooms'] ?? 0,
+      imageUrl: hostelResponse['image_url'],
+      ownerId: hostelResponse['owner_id'] ?? '',
+      createdAt: DateTime.parse(hostelResponse['created_at']),
+      updatedAt: DateTime.parse(hostelResponse['updated_at']),
+      location: hostelResponse['location'] ?? 'Unknown location',
+      email: hostelResponse['email'],
+      phone: hostelResponse['phone'],
+    );
+    
+    await _hostelsBox?.put(hostelModel.id, hostelModel);
 
     // 2. Fetch hostel images
     List<String> images = [];
@@ -83,7 +184,7 @@ Future<void> _loadHostelData() async {
         .select('amenity')
         .eq('hostel_id', widget.hostelId);
     
-    // Process amenities
+    // Process amenities and save to a box if needed
     List<Map<String, dynamic>> amenities = [];
     for (var amenity in amenitiesResponse) {
       IconData iconData;
@@ -120,6 +221,9 @@ Future<void> _loadHostelData() async {
         'name': amenity['amenity'],
         'icon': iconData,
       });
+      
+      // Save amenities to Hive if you have a box for them
+      // await _amenitiesBox?.put('${widget.hostelId}_${amenity['amenity']}', {'hostel_id': widget.hostelId, 'amenity': amenity['amenity']});
     }
 
     // 4. Fetch hostel rules
@@ -129,12 +233,36 @@ Future<void> _loadHostelData() async {
         .eq('hostel_id', widget.hostelId);
     
     List<String> rules = rulesResponse.map<String>((rule) => rule['rule'] as String).toList();
+    
+    // Save rules to Hive if you have a box for them
+    // for (var rule in rules) {
+    //   await _rulesBox?.put('${widget.hostelId}_${rule}', {'hostel_id': widget.hostelId, 'rule': rule});
+    // }
 
     // 5. Fetch room types with capacity
     final roomsResponse = await supabase
         .from('rooms')
-        .select('name, room_number, price, capacity, available, description, image_url')
+        .select('id, name, room_number, price, capacity, available, description, image_url')
         .eq('hostel_id', widget.hostelId);
+    
+    // Save rooms to Hive
+    for (var room in roomsResponse) {
+      RoomModel roomModel = RoomModel(
+        id: room['id'],
+        hostelId: widget.hostelId,
+        name: room['name'],
+        roomNumber: room['room_number'],
+        price: (room['price'] as num).toDouble(),
+        capacity: room['capacity'],
+        description: room['description'],
+        available: room['available'],
+        imageUrl: room['image_url'],
+        createdAt: DateTime.parse(room['created_at'] ?? DateTime.now().toIso8601String()),
+        updatedAt: DateTime.parse(room['updated_at'] ?? DateTime.now().toIso8601String()),
+      );
+      
+      await _roomsBox?.put(roomModel.id, roomModel);
+    }
     
     // Process room types
     Map<String, Map<String, dynamic>> roomTypeMap = {};
@@ -157,7 +285,7 @@ Future<void> _loadHostelData() async {
     }
     List<Map<String, dynamic>> roomTypes = roomTypeMap.values.toList();
 
-    // 6. Fetch reviews - FIXED: Use separate queries for reviews and profile info
+    // 6. Fetch reviews
     final reviewsResponse = await supabase
         .from('reviews')
         .select('id, hostel_id, user_id, rating, comment, created_at')
@@ -168,7 +296,7 @@ Future<void> _loadHostelData() async {
     double totalRating = 0;
     
     for (var review in reviewsResponse) {
-      // Use separate query to get the profile information for this review
+      // Use separate query to get the profile information
       String firstName = 'Anonymous';
       try {
         final profileResponse = await supabase
@@ -209,11 +337,22 @@ Future<void> _loadHostelData() async {
         'comment': review['comment'] ?? '',
         'date': dateText,
       });
+      
+      // Save reviews to Hive if you have a box for them
+      // await _reviewsBox?.put(review['id'], {
+      //   'id': review['id'],
+      //   'hostel_id': widget.hostelId,
+      //   'user_id': review['user_id'],
+      //   'rating': review['rating'],
+      //   'comment': review['comment'] ?? '',
+      //   'created_at': review['created_at'],
+      //   'user_name': firstName,
+      // });
     }
     
     final rating = reviews.isEmpty ? 0.0 : (totalRating / reviews.length);
 
-    // 7. Combine all data including email and phone
+    // 7. Combine all data
     setState(() {
       _hostelData = {
         'id': hostelResponse['id'],
@@ -237,15 +376,119 @@ Future<void> _loadHostelData() async {
       _isLoading = false;
     });
   } catch (error) {
-    print('Error loading hostel data: $error');
+    print('Error loading hostel data from Supabase: $error');
+    // Try to load from Hive if online load fails
+    await _loadHostelDataFromHive();
+  }
+}
+
+Future<void> _loadHostelDataFromHive() async {
+  try {
+    // 1. Get hostel from Hive
+    final hostelModel = _hostelsBox?.get(widget.hostelId);
+    
+    if (hostelModel == null) {
+      throw Exception('Hostel not found in offline storage');
+    }
+    
+    // 2. Get rooms from Hive
+    List<RoomModel> roomModels = _roomsBox?.values
+        .where((room) => room.hostelId == widget.hostelId)
+        .toList() ?? [];
+    
+    // Process room types from local data
+    Map<String, Map<String, dynamic>> roomTypeMap = {};
+    for (var room in roomModels) {
+      final type = room.name;
+      if (!roomTypeMap.containsKey(type)) {
+        roomTypeMap[type] = {
+          'type': type,
+          'price': room.price,
+          'capacity': room.capacity,
+          'available': room.available,
+          'description': room.description,
+        };
+      } else if (room.price < roomTypeMap[type]!['price']) {
+        roomTypeMap[type]!['price'] = room.price;
+        if (room.available) {
+          roomTypeMap[type]!['available'] = true;
+        }
+      }
+    }
+    List<Map<String, dynamic>> roomTypes = roomTypeMap.values.toList();
+    
+    // 3. Get favorites (if needed)
+    final userId = supabase.auth.currentUser?.id;
+    bool isFavorite = false;
+    if (userId != null) {
+      isFavorite = _favoritesBox?.values
+          .any((fav) => fav.hostelId == widget.hostelId && fav.userId == userId) ?? false;
+      
+      setState(() {
+        _isFavorite = isFavorite;
+      });
+    }
+    
+    // 4. Placeholder data for other elements
+    // In a more complete implementation, you would store and retrieve
+    // amenities, rules, and reviews from their respective Hive boxes
+    
+    List<Map<String, dynamic>> amenities = [
+      {'name': 'WiFi', 'icon': Icons.wifi},
+      {'name': 'Security', 'icon': Icons.security},
+    ];
+    
+    List<String> rules = ['No smoking', 'No pets'];
+    
+    List<Map<String, dynamic>> reviews = [];
+    
+    // 5. Set the hostel data
+    setState(() {
+      _hostelData = {
+        'id': hostelModel.id,
+        'name': hostelModel.name,
+        'images': hostelModel.imageUrl != null ? [hostelModel.imageUrl!] : ['assets/images/hostel_placeholder.jpg'],
+        'rating': '0.0', // Placeholder if you don't have reviews in offline mode
+        'reviewCount': 0,
+        'description': hostelModel.description,
+        'price': hostelModel.price,
+        'available': hostelModel.availableRooms > 0,
+        'amenities': amenities,
+        'rules': rules,
+        'roomTypes': roomTypes,
+        'reviews': reviews,
+        'location': hostelModel.location,
+        'address': hostelModel.address,
+        'contact_info': 'No contact information provided',
+        'email': hostelModel.email,
+        'phone': hostelModel.phone,
+      };
+      _isLoading = false;
+    });
+    
+    // Show offline mode notification
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('You are viewing offline data. Some features may be limited.'),
+        backgroundColor: Colors.amber[700],
+        duration: Duration(seconds: 3),
+      ),
+    );
+  } catch (error) {
+    print('Error loading hostel data from Hive: $error');
     setState(() {
       _isLoading = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error loading hostel data: $error')),
+      SnackBar(
+        content: Text('This hostel is not available offline. Please connect to the internet.'),
+        backgroundColor: Colors.red,
+      ),
     );
   }
 }
+
+
 
   void _shareHostel() {
     Share.share(
@@ -255,77 +498,128 @@ Future<void> _loadHostelData() async {
   }
 
   void _navigateToRoomSelection(String? roomType, [int? capacity]) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => RoomSelectionScreen(
-          hostelId: _hostelData['id'],
-          roomType: roomType,
-          capacity: capacity,
-        ),
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => RoomSelectionScreen(
+        hostelId: _hostelData['id'],
+        roomType: roomType,
+        capacity: capacity,
+        isOfflineMode: !_isConnected, // Pass offline status to the room selection screen
       ),
-    );
+    ),
+  );
+}
+Future<void> _syncOfflineFavorites() async {
+  try {
+    if (!_isConnected) return;
+    
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    
+    // Find all favorites that need syncing
+    final pendingSyncFavorites = _favoritesBox?.values
+        .where((fav) => fav.pendingSync == true && fav.userId == userId)
+        .toList() ?? [];
+        
+    for (var favorite in pendingSyncFavorites) {
+      if (favorite.toBeDeleted == true) {
+        // This favorite was marked for deletion while offline
+        await supabase.from('favorites')
+            .delete()
+            .match({'user_id': userId, 'hostel_id': favorite.hostelId});
+            
+        // Remove from local storage after successful sync
+        await _favoritesBox?.delete(favorite.key);
+      } else {
+        // This favorite was added while offline
+        await supabase.from('favorites').upsert({
+          'user_id': userId,
+          'hostel_id': favorite.hostelId,
+          'created_at': favorite.createdAt.toIso8601String(),
+        });
+        
+        // Update local status after successful sync
+        favorite.pendingSync = false;
+        await _favoritesBox?.put(favorite.key, favorite);
+      }
+    }
+    
+    print('Successfully synced ${pendingSyncFavorites.length} offline favorites');
+  } catch (error) {
+    print('Error syncing offline favorites: $error');
   }
+}
 
   Future<void> _submitReview() async {
-    if (_userRating == 0) {
+  if (_userRating == 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please select a rating")),
+    );
+    return;
+  }
+  
+  try {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a rating")),
+        const SnackBar(content: Text("You must be logged in to leave a review")),
       );
       return;
     }
     
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("You must be logged in to leave a review")),
-        );
-        return;
-      }
-      
-      // Make sure the comment is not null
-      final comment = _reviewController.text.isNotEmpty ? _reviewController.text : null;
-      
-      await supabase.from('reviews').insert({
-        'hostel_id': widget.hostelId,
-        'user_id': userId,
-        'rating': _userRating.toDouble(),
-        'comment': comment,
-      });
-      
-      _reviewController.clear();
-      setState(() {
-        _userRating = 0;
-      });
-      
-      // Reload data after submitting review
-      await _loadHostelData();
-      
+    if (!_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Review submitted successfully")),
+        const SnackBar(content: Text("Reviews can only be submitted when online")),
       );
-    } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error submitting review: $error")),
-      );
+      return;
     }
+    
+    // Make sure the comment is not null
+    final comment = _reviewController.text.isNotEmpty ? _reviewController.text : null;
+    
+    await supabase.from('reviews').insert({
+      'hostel_id': widget.hostelId,
+      'user_id': userId,
+      'rating': _userRating.toDouble(),
+      'comment': comment,
+    });
+    
+    _reviewController.clear();
+    setState(() {
+      _userRating = 0;
+    });
+    
+    // Reload data after submitting review
+    await _loadHostelData();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Review submitted successfully")),
+    );
+  } catch (error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error submitting review: $error")),
+    );
   }
+}
 
+  
   Future<void> _toggleFavorite() async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("You must be logged in to save favorites")),
-        );
-        return;
-      }
-      
-      setState(() {
-        _isFavorite = !_isFavorite;
-      });
-      
+  try {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You must be logged in to save favorites")),
+      );
+      return;
+    }
+    
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+    
+    if (_isConnected) {
+      // Online mode - update favorites in Supabase
       if (_isFavorite) {
         await supabase.from('favorites').insert({
           'user_id': userId,
@@ -336,22 +630,57 @@ Future<void> _loadHostelData() async {
             .delete()
             .match({'user_id': userId, 'hostel_id': widget.hostelId});
       }
-    } catch (error) {
-      setState(() {
-        _isFavorite = !_isFavorite;
-      });
+    } else {
+      // Offline mode - update favorites in Hive
+      if (_isFavorite) {
+        // Create new favorite and mark for syncing later
+        final favorite = FavoriteModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          userId: userId,
+          hostelId: widget.hostelId,
+          createdAt: DateTime.now(),
+          pendingSync: true,
+        );
+        
+        await _favoritesBox?.put(favorite.id, favorite);
+      } else {
+        // Find and remove the favorite
+        final favorites = _favoritesBox?.values
+            .where((fav) => fav.hostelId == widget.hostelId && fav.userId == userId)
+            .toList();
+            
+        for (var fav in favorites ?? []) {
+          await _favoritesBox?.delete(fav.key);
+        }
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error updating favorites: $error")),
+        SnackBar(
+          content: Text(_isFavorite 
+            ? "Added to favorites (will sync when online)" 
+            : "Removed from favorites (will sync when online)"
+          ),
+        ),
       );
     }
+  } catch (error) {
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error updating favorites: $error")),
+    );
   }
+}
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _reviewController.dispose();
-    super.dispose();
-  }
+  _tabController.dispose();
+  _reviewController.dispose();
+  _connectivitySubscription?.cancel();
+  super.dispose();
+}
+
 
   @override
   Widget build(BuildContext context) {

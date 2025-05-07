@@ -110,7 +110,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The rest of the widget build method remains unchanged
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
@@ -166,9 +165,6 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  // Rest of the widget methods remain the same...
-  // Including _buildHeader(), _buildErrorMessage(), etc.
-  
   Widget _buildHeader() {
     return Center(
       child: Column(
@@ -375,6 +371,18 @@ class _SignupScreenState extends State<SignupScreen> {
             }
             if (value.length < 8) {
               return 'Password must be at least 8 characters';
+            }
+            if (!RegExp(r'[A-Z]').hasMatch(value)) {
+              return 'Password must contain at least one uppercase letter';
+            }
+            if (!RegExp(r'[a-z]').hasMatch(value)) {
+              return 'Password must contain at least one lowercase letter';
+            }
+            if (!RegExp(r'\d').hasMatch(value)) {
+              return 'Password must contain at least one number';
+            }
+            if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
+              return 'Password must contain at least one special character';
             }
             return null;
           },

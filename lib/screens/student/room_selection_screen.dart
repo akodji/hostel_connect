@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:hostel_connect/services/hive_models.dart';
+import 'package:hostel_connect/services/connectivity_service.dart';
 
 class RoomSelectionScreen extends StatefulWidget {
-  final int hostelId;
+  final int? hostelId;
   final String? roomType;
   final int? capacity;
+  final bool isOfflineMode;
 
   const RoomSelectionScreen({
     Key? key,
-    required this.hostelId,
+    this.hostelId,
     this.roomType,
     this.capacity,
+    this.isOfflineMode = false,
   }) : super(key: key);
 
   @override
@@ -23,13 +28,17 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
   final TextEditingController _notesController = TextEditingController();
   int? _selectedCapacity;
   bool _isLoading = true;
+  bool _hasConnectivity = true; // Track connectivity status
   List<Map<String, dynamic>> _rooms = [];
+  List<Map<String, dynamic>> _hostels = [];
+  int? _selectedHostelId;
 
   @override
   void initState() {
     super.initState();
     _selectedCapacity = widget.capacity;
-    _fetchRooms();
+    _selectedHostelId = widget.hostelId;
+    _checkConnectivityAndFetchData();
   }
 
   @override
@@ -38,33 +47,101 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
     super.dispose();
   }
 
+  Future<void> _checkConnectivityAndFetchData() async {
+    try {
+      // First check if we have connectivity
+      bool isConnected = ConnectivityService().isConnected;
+      
+      setState(() {
+        _hasConnectivity = isConnected;
+      });
+      
+      // Always try to fetch data regardless of connectivity status
+      _fetchHostels();
+      _fetchRooms();
+    } catch (error) {
+      print('Error checking connectivity: $error');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchHostels() async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      final response = await supabase
+          .from('hostels')
+          .select('id, name')
+          .order('name');
+      
+      if (mounted) {
+        setState(() {
+          _hostels = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      print('Error fetching hostels: $error');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _fetchRooms() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final supabase = Supabase.instance.client;
       
+      if (_selectedHostelId == null) {
+        if (mounted) {
+          setState(() {
+            _rooms = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+      
       // Enhanced query to check room availability based on bookings count and capacity
       final response = await supabase.rpc('get_available_rooms', params: {
-        'hostel_id_param': widget.hostelId,
+        'hostel_id_param': _selectedHostelId,
         'room_type_param': widget.roomType,
         'capacity_param': _selectedCapacity,
       });
       
-      setState(() {
-        _rooms = List<Map<String, dynamic>>.from(response);
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _rooms = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
     } catch (error) {
       print('Error fetching rooms: $error');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _onHostelChanged(int? hostelId) {
+    if (hostelId != null && hostelId != _selectedHostelId) {
       setState(() {
-        _isLoading = false;
+        _selectedHostelId = hostelId;
+        _selectedRoomIndex = -1; // Reset room selection when hostel changes
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading rooms: $error')),
-      );
+      _fetchRooms();
     }
   }
 
@@ -101,7 +178,7 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
         return;
       }
       
-      if (_selectedRoomIndex == -1 || _selectedMoveInDate == null) {
+      if (_selectedRoomIndex == -1 || _selectedMoveInDate == null || _selectedHostelId == null) {
         return;
       }
 
@@ -125,13 +202,13 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
       final hostelResponse = await supabase
           .from('hostels')
           .select('name')
-          .eq('id', widget.hostelId)
+          .eq('id', _selectedHostelId!)
           .single();
       
       // Create booking
       final bookingData = {
         'user_id': user.id,
-        'hostel_id': widget.hostelId,
+        'hostel_id': _selectedHostelId,
         'room_id': selectedRoom['id'],
         'move_in_date': _selectedMoveInDate!.toIso8601String(),
         'status': 'pending',
@@ -161,12 +238,19 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
     } catch (error) {
       print('Error saving booking: $error');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error processing booking: $error')),
+        const SnackBar(content: Text('Error occurred while booking. Please try again.')),
       );
     }
   }
 
   void _submitBooking() {
+    if (_selectedHostelId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a hostel')),
+      );
+      return;
+    }
+
     if (_selectedRoomIndex == -1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a room')),
@@ -198,6 +282,45 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Hostel Dropdown
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Select Hostel:',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: _selectedHostelId,
+                              isExpanded: true,
+                              hint: const Text('Select a hostel'),
+                              items: _hostels.map<DropdownMenuItem<int>>((hostel) {
+                                return DropdownMenuItem<int>(
+                                  value: hostel['id'],
+                                  child: Text(hostel['name']),
+                                );
+                              }).toList(),
+                              onChanged: _onHostelChanged,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
                   if (widget.roomType != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -258,10 +381,12 @@ class _RoomSelectionScreenState extends State<RoomSelectionScreen> {
                               color: Colors.grey[400],
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'No rooms available with the selected filters',
+                            Text(
+                              _selectedHostelId == null 
+                                ? 'Please select a hostel to see available rooms'
+                                : 'No rooms available with the selected filters',
                               textAlign: TextAlign.center,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 16,
                                 color: Colors.grey,
                               ),

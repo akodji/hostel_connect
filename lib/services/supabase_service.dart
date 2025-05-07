@@ -141,88 +141,115 @@ class SupabaseService {
     }
   }
 
-  /// Delete user account
-  /// This handles the client-side portion of account deletion
-  static Future<void> deleteAccount({
-    required String password,
-  }) async {
-    if (currentUser == null) throw Exception('User not authenticated');
+ /// Delete user account
+/// This completely deletes the user from both auth.users and profiles tables
+static Future<bool> deleteAccount({
+  required String password,
+}) async {
+  if (currentUser == null) throw Exception('User not authenticated');
+  
+  try {
+    // Step 1: Verify the password by attempting to reauthenticate
+    final email = currentUser!.email;
+    if (email == null) throw Exception('User email not available');
     
-    try {
-      // Step 1: Verify the password by attempting to reauthenticate
-      final email = currentUser!.email;
-      if (email == null) throw Exception('User email not available');
-      
-      await client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+    await client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
 
-      // Get the user ID for reference
-      final userId = currentUser!.id;
-      
-      // Step 2: Get all user-related bookings and mark them as cancelled/inactive
-      // Update this to match your actual DB schema for bookings
+    // Get the user ID for reference
+    final userId = currentUser!.id;
+    
+    // Step 2: Update related data first (soft delete)
+    try {
       await client
           .from('bookings')
           .update({
             'status': 'cancelled',
-            'updated_at': DateTime.now().toIso8601String(),
             'is_deleted': true,
+            'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('user_id', userId);
-      
-      // Step 3: Mark the profile as deleted
-      await client
-          .from('profiles')
-          .update({
-            'is_deleted': true,
-            'email': 'deleted_${userId}@deleted.com', // Anonymize email
-            'phone': '',  // Remove phone number
-            'first_name': 'Deleted',
-            'last_name': 'User',
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', userId);
-      
-      // Step 4: Call an edge function to handle the auth user deletion (if available)
-      try {
-        // If you have set up the edge function for deletion
-        await client.functions.invoke('delete-user');
-      } catch (e) {
-        print('Edge function for deletion not available: ${e.toString()}');
-        // Continue with fallback method
-      }
-      
-      // Step 5: Sign out the user
-      await signOut();
-      
     } catch (e) {
-      if (e is AuthException) {
-        throw Exception('Password is incorrect');
-      }
-      throw Exception('Failed to delete account: ${e.toString()}');
+      print('Note: Could not update bookings: $e');
+      // Continue with deletion even if this step fails
     }
-  }
-
-  /// Check if an email exists in the system
-  static Future<bool> checkEmailExists(String email) async {
+    
+    // Step 3: PRIMARY DELETION METHOD - Use admin API (most direct method)
     try {
-      // First try to check in auth.users table using admin functions
-      // Since this is a client app, we'll just check the profiles table
-      // which is accessible to us
-      final data = await client
-          .from('profiles')
-          .select('email')
-          .eq('email', email.toLowerCase().trim())
-          .maybeSingle();
+      // This is the most straightforward way to delete from auth.users
+      await client.auth.admin.deleteUser(userId);
+      print('User successfully deleted via admin API');
       
-      return data != null;
-    } catch (e) {
-      print('Error checking email existence: $e');
-      rethrow;
+      // The user should be deleted from auth.users table at this point
+      // Due to RLS triggers, the profiles record may also be deleted automatically
+      
+      // Sign out the user after deletion
+      await signOut();
+      return true;
+    } catch (adminError) {
+      print('Admin API deletion failed: $adminError');
+      
+      // Step 4: FALLBACK - Use PostgreSQL function via RPC
+      try {
+        // This RPC should execute a SQL function with permissions to delete from auth.users
+        // Note: You need to create this function in your Supabase database
+        final response = await client.rpc(
+          'delete_user_account',
+          params: {'user_id': userId},
+        );
+        
+        print('RPC deletion response: $response');
+        await signOut();
+        return true;
+      } catch (rpcError) {
+        print('RPC deletion failed: $rpcError');
+        
+        // Step 5: LAST RESORT - Use Edge Function
+        try {
+          final response = await client.functions.invoke(
+            'delete-user-account', 
+            body: {
+              'user_id': userId,
+              'email': email,
+            }
+          );
+          
+          print('Edge function response: ${response.status}');
+          await signOut();
+          return response.status == 200;
+        } catch (functionError) {
+          print('Edge function deletion failed: $functionError');
+          
+          // If all deletion methods fail, inform the user
+          throw Exception('Unable to delete account. Please contact support.');
+        }
+      }
     }
+  } catch (e) {
+    if (e is AuthException) {
+      throw Exception('Password is incorrect');
+    }
+    throw Exception('Failed to delete account: ${e.toString()}');
   }
+}
+
+static Future<bool> checkEmailExists(String email) async {
+  try {
+    // Check in profiles table
+    final data = await client
+        .from('profiles')
+        .select('email')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
+    
+    return data != null;
+  } catch (e) {
+    print('Error checking email existence: $e');
+    rethrow;
+  }
+}
 
   /// Generate and send OTP to user's email for password reset
   static Future<void> sendPasswordResetOTP(String email) async {

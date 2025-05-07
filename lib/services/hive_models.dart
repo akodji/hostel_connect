@@ -129,16 +129,26 @@ class FavoriteModel extends HiveObject {
   DateTime createdAt;
 
   @HiveField(4)
-  bool pendingSync; // ✅ New field
+  bool synced;
+
+  @HiveField(5)
+  bool pendingSync;
+
+   @HiveField(6)
+  bool toBeDeleted;
 
   FavoriteModel({
     required this.id,
     required this.userId,
     required this.hostelId,
     required this.createdAt,
+    this.synced = false,           // ✅ Add this
     this.pendingSync = false,
+    this.toBeDeleted = false,
+    
   });
 }
+
 
 @HiveType(typeId: 3)
 class BookingModel extends HiveObject {
@@ -173,7 +183,7 @@ class BookingModel extends HiveObject {
   DateTime updatedAt;
 
   @HiveField(10)
-  String syncStatus; // ✅ New field
+  String syncStatus;
 
   BookingModel({
     required this.id,
@@ -189,10 +199,8 @@ class BookingModel extends HiveObject {
     this.syncStatus = 'pending',
   });
 
-  /// ✅ Helper: Check if booking is offline (unsynced)
   bool get isOfflineBooking => syncStatus == 'pending';
 
-  /// ✅ Factory to create offline booking
   factory BookingModel.createOfflineBooking({
     required String userId,
     required int hostelId,

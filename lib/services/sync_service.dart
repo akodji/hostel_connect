@@ -37,4 +37,30 @@ class SyncService {
       }
     }
   }
+  Future<void> syncFavorites() async {
+  final isConnected = await ConnectivityService().checkConnectivity();
+  if (!isConnected) return;
+
+  final unsyncedFavorites = await LocalDatabaseService().getUnsyncedFavorites();
+
+  for (final fav in unsyncedFavorites) {
+    try {
+      await client.from('favorites').insert({
+        'id': fav.id,
+        'hostel_id': fav.hostelId,
+        'user_id': fav.userId,
+      });
+
+      await LocalDatabaseService().markFavoriteAsSynced(fav.id);
+    } catch (e) {
+      print('Failed to sync favorite ${fav.id}: $e');
+    }
+  }
+}
+
+Future<void> syncAll() async {
+  await syncBookings();
+  await syncFavorites();
+}
+
 }

@@ -309,13 +309,13 @@ class _AddEditRoomScreenState extends State<AddEditRoomScreen> {
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}${path.extension(_imageFile!.path)}';
       final imagePath = 'hostels/$fileName';
 
-      await supabase.storage.from('images').upload(
+      await supabase.storage.from('new').upload(
         imagePath,
         _imageFile!,
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
 
-      return supabase.storage.from('images').getPublicUrl(imagePath);
+      return supabase.storage.from('new').getPublicUrl(imagePath);
     } catch (e) {
       _showErrorSnackbar('Error uploading image: ${e.toString()}');
       return null;

@@ -812,12 +812,7 @@ void _showDeleteAccountDialog() {
                             );
                           },
                         ),
-                        _buildSettingsItem(
-                          'Notifications',
-                          'Manage your notification preferences',
-                          Icons.notifications_outlined,
-                          () {},
-                        ),
+                        
                       ],
                     ),
                   ),
@@ -996,38 +991,7 @@ void _showDeleteAccountDialog() {
                   ),
                   // Add space between buttons
                   const SizedBox(height: 16),
-                  // Delete Account button - Updated version
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: ElevatedButton(
-                      onPressed: _showDeleteAccountDialog,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFFF75676),
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(color: Color(0xFFF75676), width: 1.5),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.delete_outline, size: 20),
-                          SizedBox(width: 8),
-                          Text(
-                            'Delete Account',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
+                  
                 ],
               ),
             ),

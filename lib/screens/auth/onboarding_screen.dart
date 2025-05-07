@@ -16,12 +16,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final List<OnboardingContent> _contents = [
     OnboardingContent(
       title: "Find Your Perfect Hostel",
-      image: "lib/assets/image.png",
+      image: "lib/assets/41e75691.jpg",
       description: "Browse through a wide selection of hostels available on campus.",
     ),
     OnboardingContent(
       title: "Book Seamlessly",
-      image: "lib/assets/WhatsApp Image 2025-05-01 at 10.04.30 PM.jpeg",
+      image: "lib/assets/pexels-photo-7368294.jpeg",
       description: "Select your preferred room type and book with just a few taps.",
     ),
     
@@ -45,37 +45,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 },
                 itemCount: _contents.length,
                 itemBuilder: (context, index) {
-                  return Padding(
-                    padding: const EdgeInsets.all(40.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          _contents[index].image,
-                          height: MediaQuery.of(context).size.height * 0.3,
-                        ),
-                        const SizedBox(height: 30),
-                        Text(
-                          _contents[index].title,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF324054),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          _contents[index].description,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Color(0xFF324054),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  );
+                  return Column(
+  children: [
+    Expanded(
+      flex: 4,
+      child: Container(
+        width: double.infinity,
+        child: Image.asset(
+          _contents[index].image,
+          fit: BoxFit.cover,
+        ),
+      ),
+    ),
+    const SizedBox(height: 20),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: Column(
+        children: [
+          Text(
+            _contents[index].title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF324054),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            _contents[index].description,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Color(0xFF324054),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ),
+  ],
+);
+
                 },
               ),
             ),
@@ -84,6 +94,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  Padding(padding: const EdgeInsets.only(top: 30.0)),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(

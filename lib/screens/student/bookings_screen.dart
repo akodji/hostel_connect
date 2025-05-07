@@ -4,7 +4,8 @@ import 'package:hostel_connect/services/hostel_service.dart';
 import 'package:intl/intl.dart';
 // Import the HostelListScreen
 import 'hostel_list_screen.dart';
-
+import 'package:hostel_connect/services/local_database_service.dart';
+import 'package:hive/hive.dart';
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({Key? key}) : super(key: key);
 
@@ -20,13 +21,15 @@ class _BookingsScreenState extends State<BookingsScreen> with SingleTickerProvid
   late TabController _tabController;
   TextEditingController _searchController = TextEditingController();
   final List<String> _tabLabels = ['All', 'Pending', 'Confirmed', 'Cancelled', 'Rejected'];
-  
+  bool _hasError = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabLabels.length, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _fetchBookings();
+    _setupHiveAndBox();
   }
   
   @override
@@ -43,6 +46,24 @@ class _BookingsScreenState extends State<BookingsScreen> with SingleTickerProvid
       } else {
         _filterBookings(_tabLabels[_tabController.index]);
       }
+    }
+  }
+  Future<void> _setupHiveAndBox() async {
+    try {
+      // Initialize Hive and open the bookings box safely
+      await LocalDatabaseService().initializeHive();
+
+      if (!Hive.isBoxOpen('bookings')) {
+        await Hive.openBox('bookings');
+      }
+
+      setState(() => _isLoading = false);
+    } catch (e) {
+      print('Error initializing Hive or opening bookings box: $e');
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
     }
   }
 
